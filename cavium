@@ -1,0 +1,48 @@
+sso unit:管理包调度和排序.
+fpa unit:维护包缓存池,还可已被用来当作通过缓存管理.
+pip unit:包输入处理单元.
+ipd unit：包输入数据单元.
+pko unit:包输出管理.
+rng unit:随机数产生器.
+per-core security coprocessor(Security Engine):安全算法加速的协处理器，每个核一个.
+pattern matching and regular expression engine:模式匹配和正则表达式引擎,这个单元用来实现字符串匹配。也叫做deterministic Finite Automata(DFA),用户将规则存储在附加的模式存储器。在OCTEON 2核NITROX 深度包检测(dpi)产品，这个模式匹配加速器被增强了,叫做NFA，是DFA速度的四倍，支持非常复杂的表达式，显著减少模式内存的需求.
+ZIP Engine:压缩解压缩引擎.
+RAID Engine:提供RAID/XOR 加速.
+per-core CRC Engine:用来加速CRC生成.
+FAU:这个单元被用来向一个存储地址增加一个值，能被用来管理计数器.
+TIM:这个单元提供计时器，能被用来TCP超时也能用作其他通用的目的.
+所有这些硬件被用来分担core的工作，让核心专注做必须的包处理任务.
+
+packet-Management Accelerators:
+负责包接收，缓存，缓存管理，流分类，QoS，传输处理.
+
+每个数据包被表示为"work"被core处理，被work Queue Entry（WQE）表示
+PIP/IPD 单元：
+1.证实ipv4校验和和Tcp和UDP的有效负载校验和。
+2.分类流.Qos和组值被设定.
+3.从fpa获得包数据缓存核WQE缓存
+4.通过专用总线DMA包数据到内存
+5.发送WQE到SSO中正确的QoS队列.WQE包含包的钱96字节，所以core能够在接收到WQE后立刻开始工作.
+
+PID/IPD实现了per-QoS-queue random early discard(RED)算法，和a per-port threshold algorithm.这些算法允许PIP/IPD必要时丢弃一些输入数据包.
+SSO负责调度给核心的工作,管理包输入序列.
+cores从SSO请求work，通过异步（core继续进行其他任务知道指令结束）,通过同步（核心等待指令结束）.通常，cores最小化空闲时间通过在真正需要之前再请求任务.
+PKO负责包传输.包处理完成的时候，core通知PKO包准备传输了.PKO管理传输优先级.
+
+PKO:
+1.DMA包数据从内存到它的内部存储器通过专用总线.
+2.选择计算出Tcp/Udp有效载荷校验和在输出的之后插入到包头.
+3.当包准备传输,PKO通过专用总线从内部存储器到输出端口发送包数据.
+4.可在传输完成时选择释放包数据缓存给FPA.
+
+SSO使多核可拓展，最大化并行处理.它基于QoS优先级和工作组给core调度任务.cores就完全释放了这个责任.SSO不仅做调度，还控制包序列.SSO还提供了锁机制来保护关键区域.用自旋锁做锁机制的首要机制就是当sso管理锁约束的时候cores可以继续工作.  会耗费可观的代码量和时间和运行周期来实现软件中SSO复杂的调度机制.
+SSO被设计为支持弹性软件架构的目标.sso的特性在流水线，修改的流水线，运行-完成软件架构下工作有效.
+调度：
+当cores准备接受任务（处理数据包）,他们从SSO请求任务.SSO负责将最高优先级的任务调度到每个core.
+调度算法有很高弹性和软件切换性，允许用户定制调度来优化应用程序性能.
+同步：
+包能够被并行处理也可以同一时间之处理一个.典型包处理过程是，很多操作都被并行处理，提升应用程序吞吐量.
+当包处理需要获得共享资源，需要锁访问.SSO管理访问，卸载软件.当临界处理结束，包继续被并行处理.这种锁被成为包-链接锁.
+SSO管理包同步，就像它们移动这些处理的相移.
+
+
